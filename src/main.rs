@@ -77,11 +77,17 @@ fn print_json(logline: &LogLine) {
     match &logline.exception {
         Some(value) => {
             match &value.exceptionType {
-                Some(exception_type) => println!("Exception type: {}", exception_type.bold().red()),
+                Some(exception_type) => {
+                    print!("{}: ", "Exception type".bright_yellow().bold());
+                    println!("{}", exception_type.bold().red()) 
+                },
                 None => (),
             }
             match &value.message {
-                Some(message) => println!("Message: {}", message.bold().red().italic()),
+                Some(message) => {
+                    print!("{}: ", "Message".bright_yellow().bold());
+                    println!("{}", message.bold().red().italic())
+                },
                 None => (),
             }
         }
