@@ -16,6 +16,13 @@ struct LogLine {
     message: String,
     stackTrace: Option<String>,
     exc_info: Option<String>,
+    exception: Option<JavaExceptionMessage>,
+}
+
+#[derive(Deserialize)]
+struct JavaExceptionMessage {
+    message: Option<String>,
+    exceptionType: Option<String>,
 }
 
 /// Choose an appropriate color for the level and return the ColoredString
@@ -64,6 +71,20 @@ fn print_json(logline: &LogLine) {
     // print exc_info if present
     match &logline.exc_info {
         Some(value) => println!("{}", value.bold().yellow()),
+        None => (),
+    }
+
+    match &logline.exception {
+        Some(value) => {
+            match &value.exceptionType {
+                Some(exception_type) => println!("Exception type: {}", exception_type.bold().red()),
+                None => (),
+            }
+            match &value.message {
+                Some(message) => println!("Message: {}", message.bold().red().italic()),
+                None => (),
+            }
+        }
         None => (),
     }
 }
