@@ -1,8 +1,10 @@
 use clap::Parser;
 use colored::ColoredString;
 use colored::Colorize;
+use regex::Regex;
 use serde::Deserialize;
 use serde_json::Error;
+use strip_ansi_escapes::strip_str;
 
 #[derive(Parser)]
 #[command(author, version, about = "PNC JSON log parser", long_about = None)]
@@ -53,9 +55,19 @@ fn colored_message(level: &str, message: &str) -> ColoredString {
 
 /// Pretty print the Logline struct
 ///
-fn print_json(logline: &LogLine) {
+fn print_json(node_name: &str, logline: &LogLine) {
+
+
+    // if there's a node name, add a space at the end so that the output is prettier
+    let final_node_name = if !node_name.is_empty() {
+        &format!("{} ", &node_name)
+    } else {
+        node_name
+    };
+
     println!(
-        "[{}] {} [{}] {}",
+        "{}[{}] {} [{}] {}",
+        final_node_name.italic().dimmed(),
         logline.timestamp.bright_white(),
         colored_level(&logline.level),
         logline.loggerName.italic().dimmed(),
@@ -79,15 +91,15 @@ fn print_json(logline: &LogLine) {
             match &value.exceptionType {
                 Some(exception_type) => {
                     print!("{}: ", "Exception type".bright_yellow().bold());
-                    println!("{}", exception_type.bold().red()) 
-                },
+                    println!("{}", exception_type.bold().red())
+                }
                 None => (),
             }
             match &value.message {
                 Some(message) => {
                     print!("{}: ", "Message".bright_yellow().bold());
                     println!("{}", message.bold().red().italic())
-                },
+                }
                 None => (),
             }
         }
@@ -98,18 +110,34 @@ fn print_json(logline: &LogLine) {
 fn main() {
     let _ = Args::parse();
 
-    // read from stdin
+    // the kubetail output is "[nodename deployment] <rest>"
+    let cap = Regex::new(r"^(?:\[(.*?)\])?\s*(.*)").unwrap();
 
+
+    // read from stdin
     for line in std::io::stdin().lines() {
         let line_stdin = line.unwrap();
-        let result: Result<LogLine, Error> = serde_json::from_str(&line_stdin);
 
-        match result {
-            // if it can't be parsed to JSON, just print the result as is
-            Err(_) => println!("{}", line_stdin),
+        // remove any ascii escape code that adds color
+        let line_cleaned = strip_str(&line_stdin);
 
-            // if we can parse to JSON, let's pretty print it!
-            Ok(value) => print_json(&value),
+        if let Some(caps) = cap.captures(&line_cleaned) {
+            // the kubetail output is "[nodename deployment] <rest>"
+            // try to extract the nodename stuff
+            // if we're just using the openshift output, the <rest> should still match
+            let node = &caps.get(1).map_or("", |m| m.as_str().split(" ").collect::<Vec<&str>>()[0]);        
+            let json_data = &caps.get(2).map_or("", |m| m.as_str());        
+
+            // parse the json if possible
+            let result: Result<LogLine, Error> = serde_json::from_str(&json_data);
+
+            match result {
+                // if it can't be parsed to JSON, just print the result as is
+                Err(_) => println!("{}", &line_cleaned),
+
+                // if we can parse to JSON, let's pretty print it!
+                Ok(value) => print_json(&node, &value),
+            }
         }
     }
 }
