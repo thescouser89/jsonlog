@@ -13,10 +13,12 @@ struct Args {}
 #[derive(Deserialize)]
 struct LogLine {
     timestamp: String,
-    loggerName: String,
+    #[serde(rename = "loggerName")]
+    logger_name: String,
     level: String,
     message: String,
-    stackTrace: Option<String>,
+    #[serde(rename = "stackTrace")]
+    stack_trace: Option<String>,
     exc_info: Option<String>,
     exception: Option<JavaExceptionMessage>,
 }
@@ -24,7 +26,23 @@ struct LogLine {
 #[derive(Deserialize)]
 struct JavaExceptionMessage {
     message: Option<String>,
-    exceptionType: Option<String>,
+    #[serde(rename = "exceptionType")]
+    exception_type: Option<String>,
+    #[serde(rename = "causedBy")]
+    caused_by: Option<Box<CausedByWrapper>>,
+    frames: Option<Vec<StackFrame>>,
+}
+
+#[derive(Deserialize)]
+struct CausedByWrapper {
+    exception: JavaExceptionMessage,
+}
+
+#[derive(Deserialize)]
+struct StackFrame {
+    class: Option<String>,
+    method: Option<String>,
+    line: Option<i64>,
 }
 
 /// Choose an appropriate color for the level and return the ColoredString
@@ -53,6 +71,29 @@ fn colored_message(level: &str, message: &str) -> ColoredString {
     }
 }
 
+fn print_exception(exception: &JavaExceptionMessage, is_caused_by: bool) {
+    let prefix = if is_caused_by { "Caused by" } else { "Exception type" };
+    if let Some(exception_type) = &exception.exception_type {
+        print!("{}: ", prefix.bright_yellow().bold());
+        println!("{}", exception_type.bold().red());
+    }
+    if let Some(message) = &exception.message {
+        print!("{}: ", "Message".bright_yellow().bold());
+        println!("{}", message.bold().red().italic());
+    }
+    if let Some(frames) = &exception.frames {
+        for frame in frames {
+            let class = frame.class.as_deref().unwrap_or("?");
+            let method = frame.method.as_deref().unwrap_or("?");
+            let line = frame.line.map_or("?".to_string(), |l| l.to_string());
+            println!("    {} {}.{}:{}", "at".dimmed(), class.red(), method.red(), line.red());
+        }
+    }
+    if let Some(caused_by) = &exception.caused_by {
+        print_exception(&caused_by.exception, true);
+    }
+}
+
 /// Pretty print the Logline struct
 ///
 fn print_json(node_name: &str, logline: &LogLine) {
@@ -70,12 +111,12 @@ fn print_json(node_name: &str, logline: &LogLine) {
         final_node_name.italic().dimmed(),
         logline.timestamp.bright_white(),
         colored_level(&logline.level),
-        logline.loggerName.italic().dimmed(),
+        logline.logger_name.italic().dimmed(),
         colored_message(&logline.level, &logline.message)
     );
 
     // print stacktrace if present
-    match &logline.stackTrace {
+    match &logline.stack_trace {
         Some(value) => println!("{}", value.bold().red()),
         None => (),
     }
@@ -86,24 +127,8 @@ fn print_json(node_name: &str, logline: &LogLine) {
         None => (),
     }
 
-    match &logline.exception {
-        Some(value) => {
-            match &value.exceptionType {
-                Some(exception_type) => {
-                    print!("{}: ", "Exception type".bright_yellow().bold());
-                    println!("{}", exception_type.bold().red())
-                }
-                None => (),
-            }
-            match &value.message {
-                Some(message) => {
-                    print!("{}: ", "Message".bright_yellow().bold());
-                    println!("{}", message.bold().red().italic())
-                }
-                None => (),
-            }
-        }
-        None => (),
+    if let Some(value) = &logline.exception {
+        print_exception(value, false);
     }
 }
 
