@@ -15,6 +15,7 @@ struct LogLine {
     timestamp: String,
     #[serde(rename = "loggerName")]
     logger_name: String,
+    #[serde(alias = "severity_text")]
     level: String,
     message: String,
     #[serde(rename = "stackTrace")]
